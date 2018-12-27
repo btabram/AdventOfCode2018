@@ -244,5 +244,126 @@ fn main() -> Result<(), ErrorHolder> {
     println!("At the end of the program in, part 1, the register values are {}",
              part1_processor);
 
+    // Part 2
+    // The program loops, seemingly endlessly for Part 2. Try working through
+    // the commands of the progam to see if we can work out when it will stop:
+
+    // Running through the program from the start:
+    //
+    // IP is [1]
+    // Add 16 to [1]
+    // IP is now 17 so add 2 to [2]
+    // IP is now 18 so multiply [2] by 2
+    // IP is now 19 so multiply [2] by [1]
+    // IP is now 20 so multiply [2] by 11
+    // IP is now 21 so add 7 to [4]
+    // IP is now 22 so multiply [4] by [1]
+    // IP is now 23 so add 13 to [4]
+    // IP is now 24 so add [4] to [2]
+    //
+    // Assuming [1, 0, 0, 0, 0, 0] start we now have [1, 25, 1003, 0, 167 , 0]
+    //
+    // IP is now 25 so add [0] to [1]
+    // IP is now 27 so set [1] to [4]
+    // IP is now 28 so multiply [4] by [1]
+    // IP is now 29 so add [1] to [4]
+    // IP is now 30 so multiply [4] by [1]
+    // IP is now 31 so multiply [4] by 14
+    // IP is now 32 so multiply [4] by [1]
+    // IP is now 33 so add [4] to [2]
+    // IP is now 34 so set [0] to 0
+    // IP is now 35 so set [1] to 0
+    //
+    // We now have [0, 1, 10551403, 0, 10550400, 0]
+    //
+    // IP is now 1 so set [3] to 1
+    // IP is now 2 so set [5] to 1
+    //
+    // >> LOOP <<
+    // IP is now 3 so set [4] to [3]*[5]
+    // IP is now 4 so set [4] to [4]==[2]
+    //
+    // We now have [0, 5, 10551403, 1, 0, 1]
+    //
+    // IP is now 5 so add [4] to [1]
+    // IP is now 6 so add 1 to [1]
+    // IP is now 8 so add 1 to [5]
+    // IP is now 9 so set [4] to [5]>[2]
+    // IP is now 10 so add [4] to [1]
+    //
+    // We now have [0, 11, 10551403, 1, 0, 2]
+    //
+    // IP is now 11 so set [1] to 2
+    // >> LOOP <<
+    // IP is now 3...
+
+    // Loop found, consider its effects:
+        // set [4] to ([3]*[5])==[2] (not true for the moment)
+        // add [4] to [1] (it's zero since the test was false so no jumps)
+        // add 1 to [5]
+        // set [4] to [5]>[2] (not true for the moment)
+        // add [4] to [1] (it's zero since the test was false so no jumps)
+        // loop back to the top
+
+    // The loop will only end if either of the testing operations succeeds.
+    // The only change every iteration is [5]++.
+    // At the moment [3] is 1 so ([3]*[5])==[2] will be satisfied first.
+
+    // Lets go through that iteration of the loop:
+    // We initially have [0, 3, 10551403, 1, 0, 10551403]
+    //
+    // IP is now 3 so set [4] to [3]*[5]
+    // IP is now 4 so set [4] to [4]==[2] (true so [4] is 1)
+    // IP is now 5 so add [4] to [1]
+    // IP is now 7 so add [3] to [0]
+    // IP is now 8 so add 1 to [5]
+    // IP is now 9 so set [4] to [5]>[2] (true so [4] is 1)
+    // IP is now 10 so add [4] to [1]
+    // IP is now 12 so add 1 to [3]
+    // IP is now 13 so set [4] to [3]>[2] (false so [4] is 0)
+    // IP is now 14 so add [4] to [1]
+    // IP is now 15 so set [1] to 1
+    // IP is now 2 so set [5] to [1]
+    // IP is now 3...
+    //
+    // The net result is [3]++, [0]=1 and [5]=1 so we're back to the original
+    // loop but with [3]++ and [0]=1
+
+    // The first test had the effect of adding [3] to [0] when true, but didn't
+    // do anything else.
+    //
+    // The second test had the effect of [3]++, opening up a new test and
+    // setting [5]=1. The new test is the only option to escape the loop (it's
+    // also the final testing command in the program so better end the loop...)
+
+    // This final test will be true when [3] is 10551404. While [3] is slowly
+    // incrementing via the second test command the value of [0] (what we
+    // actually care about) will be modified whenever the first test is true.
+
+    // The first test will only be satisifed on 4 occasions, one of which we've
+    // already dealt with above, since the only factors of 10551403 are 19 and
+    // 555337. We will end up with the sum of all the factors of 10551403 in
+    // [0]. This is 1 + 10551403 + 19 + 555337 = 11106760
+
+    // At this point we enter the final iteration of the loop:
+    // We initially have [11106760, 3, 10551403, 10551403, 0, 10551403]
+    //
+    // IP is now 3 so set [4] to [3]*[5]
+    // IP is now 4 so set [4] to [4]==[2] (false so [4] is 0)
+    // IP is now 5 so add [4] to [1]
+    // IP is now 6 so add 1 to [1]
+    // IP is now 8 so add 1 to [5]
+    // IP is now 9 so set [4] to [5]>[2] (true so [4] is 1)
+    // IP is now 10 so add [4] to [1]
+    // IP is now 12 so add 1 to [3]
+    // IP is now 13 so set [4] to [3]>[2] (true so [4] is 0)
+    // IP is now 14 so add [4] to [1]
+    // IP is now 16 so set multiply [1] by [1]
+    // IP is now 257 -> out of range so program finishes!
+
+    let part2_answer = 11106760;
+    println!("The final value of the program, when starting with [0]=1 is {}.",
+             part2_answer);
+
     Ok(())
 }

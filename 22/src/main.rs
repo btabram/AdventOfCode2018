@@ -1,8 +1,16 @@
 use std::fs;
+use std::collections::{HashMap, HashSet};
+
+#[macro_use]
+extern crate lazy_static;
+
+extern crate pathfinding;
+use pathfinding::prelude::astar;
 
 type ErrorHolder = Box<std::error::Error>;
+type Moves = Vec<(CaveSystemState, usize)>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum RegionType {
     Rocky,
     Narrow,
@@ -63,6 +71,26 @@ struct CaveSystem {
     target: (i32, i32),
 }
 
+impl std::fmt::Display for CaveSystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let printing_grid = self.vec.iter().map(|b| match b.t {
+                                                Rocky => '.',
+                                                Narrow => '|',
+                                                Wet => '=',
+                                                Unknown => '?',
+                                            }).collect::<Vec<_>>();
+        let mut grid_string = String::new();
+        for row_index in 0..self.height {
+            let mut row: String = printing_grid.iter()
+                                    .skip(row_index * self.width)
+                                    .take(self.width).collect();
+            row.push('\n');
+            grid_string.push_str(&row);
+        }
+        write!(f, "{}", grid_string)
+    }
+}
+
 impl CaveSystem {
     fn new(width: i32, height: i32,
            depth: i32, target: (i32, i32)) -> CaveSystem {
@@ -88,7 +116,7 @@ impl CaveSystem {
         for x in 1..width  {
             for y in 1..height {
                 // Don't overrite the RegionType for the target
-                if (x, y) == (width - 1, height - 1) {
+                if (x as i32, y as i32) == target {
                     continue;
                 }
 
@@ -110,25 +138,102 @@ impl CaveSystem {
     fn get(&self, x: usize, y: usize) -> Region {
         self.vec[x + (self.width * y)]
     }
+
+    fn get_possible_moves(&self, css: &CaveSystemState) -> Moves {
+        let x = css.x;
+        let y = css.y;
+        let ref current_tool = css.tool;
+        let ref current_region_type = css.region_type;
+
+
+        //### Consider moves into neighbouring regions ###//
+        let mut next_move_region_types = vec![
+            (x + 1, y, self.get(x + 1, y).t),
+            (x, y + 1, self.get(x, y + 1).t),
+        ];
+
+        // Can't go into negative x or y regions
+        if x > 0 {
+            next_move_region_types.push((x - 1, y, self.get(x - 1, y).t));
+        }
+        if y > 0 {
+            next_move_region_types.push((x, y - 1, self.get(x, y - 1).t));
+        }
+
+        let mut next_moves = vec![];
+        for n in next_move_region_types {
+            let (n_x, n_y, ref n_region_type) = n;
+
+            // If the current tool is valid for the neighbouring square then
+            // we can just move in at a cost of one minute
+            if VALID_GEAR.get(n_region_type).unwrap().contains(current_tool) {
+                let next_state = CaveSystemState {
+                    x: n_x,
+                    y: n_y,
+                    tool: current_tool.clone(),
+                    region_type: n_region_type.clone(),
+                };
+                next_moves.push((next_state, 1));
+            }
+        }
+
+
+        //### Consider swapping the current tool at a cost of 7 minutes ###//
+        let new_tool: Vec<_> =
+            TOOLS.iter().filter(
+                |t| *t != current_tool &&
+                VALID_GEAR.get(current_region_type).unwrap().contains(t)
+            ).collect();
+        assert!(new_tool.len() == 1);
+
+        let new_tool_state = CaveSystemState {
+            x,
+            y,
+            tool: new_tool[0].clone(),
+            region_type: current_region_type.clone(),
+        };
+        next_moves.push((new_tool_state, 7));
+
+
+        next_moves
+    }
 }
 
-impl std::fmt::Display for CaveSystem {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let printing_grid = self.vec.iter().map(|b| match b.t {
-                                                Rocky => '.',
-                                                Narrow => '|',
-                                                Wet => '=',
-                                                Unknown => '?',
-                                            }).collect::<Vec<_>>();
-        let mut grid_string = String::new();
-        for row_index in 0..self.height {
-            let mut row: String = printing_grid.iter()
-                                    .skip(row_index * self.width)
-                                    .take(self.width).collect();
-            row.push('\n');
-            grid_string.push_str(&row);
-        }
-        write!(f, "{}", grid_string)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Tool {
+    Torch,
+    ClimbingGear,
+    Neither,
+}
+use self::Tool::*;
+
+lazy_static! {
+    static ref TOOLS: Vec<Tool> = vec![Torch, ClimbingGear, Neither];
+}
+
+
+lazy_static! {
+    static ref VALID_GEAR: HashMap<RegionType, HashSet<Tool>> = {
+        let mut map = HashMap::new();
+        map.insert(Rocky, vec![ClimbingGear, Torch].iter().cloned().collect());
+        map.insert(Wet, vec![ClimbingGear, Neither].iter().cloned().collect());
+        map.insert(Narrow, vec![Torch, Neither].iter().cloned().collect());
+        map
+    };
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CaveSystemState {
+    x: usize,
+    y: usize,
+    tool: Tool,
+    region_type: RegionType,
+}
+
+impl CaveSystemState {
+    fn distance(&self, other: &CaveSystemState) -> usize {
+        ((self.x as i32 - other.x as i32).abs()
+            + (self.y as i32 - other.y as i32).abs()) as usize
     }
 }
 
@@ -157,6 +262,13 @@ fn main() -> Result<(), ErrorHolder> {
     let target = target.expect("Failed to find target in the input");
     let depth = depth.expect("Failed to find depth in the input");
 
+    part1(target, depth);
+    part2(target, depth);
+
+    Ok(())
+}
+
+fn part1(target: (i32, i32), depth: i32) {
     let (x_max, y_max) = target;
     let cs = CaveSystem::new(x_max + 1, y_max + 1, depth, target);
     println!("{}", cs);
@@ -167,7 +279,35 @@ fn main() -> Result<(), ErrorHolder> {
                                                     Narrow => 2,
                                                     Unknown => unreachable!(),
                                                 }).sum();
-    println!("The danger index is {}.", danger_index);
+    println!("The danger index is {}.\n", danger_index);
+}
 
-    Ok(())
+fn part2(target: (i32, i32), depth: i32) {
+    let (x_max, y_max) = target;
+    // Allow 20 squares extra beyond the target in x and y since the fastest
+    // route may involve some squares beyond the target x and y values.
+    let cs = CaveSystem::new(x_max + 21, y_max + 21, depth, target);
+
+    let start = CaveSystemState {
+        x: 0,
+        y: 0,
+        tool: Torch,
+        region_type: Rocky,
+    };
+
+    let dest = CaveSystemState {
+        x: target.0 as usize,
+        y: target.1 as usize,
+        tool: Torch,
+        region_type: Rocky,
+    };
+
+    let quickest_path = astar(
+                            &start,
+                            |s| cs.get_possible_moves(s),
+                            |s| s.distance(&dest),
+                            |s| s == &dest
+                        );
+    println!("The quickest path to save Santa's friend takes {} minutes.",
+             quickest_path.expect("Failed to find a path").1);
 }

@@ -1,3 +1,5 @@
+_Archived in favour of https://github.com/btabram/advent-of-code_
+
 # AdventOfCode2018
 
 Learning Rust via the Advent of Code challenges, see https://adventofcode.com/2018
